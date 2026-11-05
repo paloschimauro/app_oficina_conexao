@@ -19,9 +19,16 @@ export async function GET(request) {
   if (!url || !apiKey) check('Configuração Supabase','error','Variáveis de conexão ausentes');
   else {
     try {
-      const response=await timeoutFetch(url+'/rest/v1/oficina_test_names?select=id,name,created_at&limit=0',{headers:{apikey:apiKey,authorization:'Bearer '+apiKey,accept:'application/json'}});
-      if (!response.ok) check('API Supabase','error','Consulta de esquema retornou HTTP '+response.status);
-      else {const data=await response.json();check('API Supabase',Array.isArray(data)?'ok':'warning',Array.isArray(data)?'API acessível e colunas reconhecidas':'Resposta inesperada');}
+      const health=await timeoutFetch(url+'/auth/v1/health',{headers:{apikey:apiKey}});
+      check('Disponibilidade Supabase',health.ok?'ok':'error','Health HTTP '+health.status);
+      const schema=await timeoutFetch(url+'/rest/v1/',{headers:{apikey:apiKey,authorization:'Bearer '+apiKey,accept:'application/openapi+json'}});
+      if(!schema.ok) check('Estrutura da API','warning','Metadados HTTP '+schema.status+'; não foi possível verificar as colunas');
+      else {
+        const spec=await schema.json();
+        const table=spec.definitions?.oficina_test_names;
+        const fields=table?.properties||{};
+        check('Estrutura da API',table && ['id','name','created_at'].every(key=>key in fields)?'ok':'warning',table?'Validando colunas públicas do contrato da API':'Metadados da tabela não disponíveis; verificar o esquema no Supabase');
+      }
     }catch(error){check('API Supabase','error',error.name==='TimeoutError'?'Tempo limite excedido':'Resposta inválida ou falha de rede');}
   }
   check('Qualidade dos registros','info','Verificação profunda exige credenciais servidor e acesso restrito; esta auditoria não lê nomes');
